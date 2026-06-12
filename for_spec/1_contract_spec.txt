@@ -1,0 +1,60 @@
+日々の生活の中で、契約している内容を整理したい。契約している内容とは、携帯電話とか、電気、ガス、保険、インターネット、動画配信サービスなど。IDや、パスワード、会社名、支払い金額など、一元的に管理したい。DBのテーブル設計をして欲しい。DBはPostgreSQL。スキーマ contract を作って、その中にテーブルを作りたい。ユーザ毎にデータを持たせたく、ユーザID aid (int) を使って。
+
+依頼１
+テーブル設計を DB_CONTRACT_SPEC.md に出力して。
+このファイルを元に、SQLを作成するので、主キーや外部キー、制約なども分かるようにしておいて。出力は日本語で。
+
+依頼２
+このテーブルを使って契約内容を整理するフロントエンドを作成するので、フロントエンドからのAPIを設計して欲しい。API_CONTRACT.md に出力して。自分のユーザは、バックエンド側で判別できる状態なので、ユーザ名やユーザIDなど、ユーザに関する情報は、含めなくて良い。バックエンドは、Pythonで、fastAPIを使う予定。
+
+不明点は聞いて。
+－－－
+
+Q
+確認したい点
+実装前に、以下について方針を教えてください。
+
+1
+カテゴリ: システム共通カテゴリ（携帯電話・電気など）をシードデータとして用意する想定でよいか。ユーザー独自カテゴリも必要か。
+2
+パスワード暗号化: アプリ層での暗号化を前提にしたが、暗号化方式（AES-256 等）や鍵管理の方針は既にあるか。
+3
+1 契約に複数の支払い: 基本料金 + オプションのように複数行を持てる設計にしたが、1 契約 1 金額で十分か。
+4
+契約書ファイル: PDF 等の添付は今回不要か（将来拡張として記載のみ）。
+5
+リマインダー: 更新日・支払日の通知機能は将来対応でよいか。
+
+方針が決まれば、この仕様書を元に SQL や FastAPI の実装に進めます。
+
+---
+1
+カテゴリも、ユーザが自由に登録する形式で
+2
+パスワードは、アプリ層で暗号化するので、テーブル中では平文で良い
+3
+1契約でひとつの支払いで良い
+4
+契約書ファイルも含めて
+5
+リマインダは要らない
+
+SQLやfastAPIの実装ではなく、仕様書のファイル DB_CONTRACT_SPEC.md、API_CONTRACT.mdを出力して。
+
+---
+DBで
+                                          Table "public.accounts"
+    Column     |            Type             | Collation | Nullable |               Default
+---------------+-----------------------------+-----------+----------+--------------------------------------
+ id            | integer                     |           | not null | nextval('accounts_id_seq'::regclass)
+ username      | character varying           |           | not null |
+ password      | character varying           |           | not null |
+ session_info  | text                        |           |          |
+ last_access   | timestamp without time zone |           | not null |
+ is_deleted    | boolean                     |           | not null |
+ created_at    | timestamp without time zone |           | not null | now()
+ updated_at    | timestamp without time zone |           | not null | now()
+ random_number | integer                     |           |          |
+ email         | text                        |           |          |
+ のidをaidで外部参照することを仕様に追記して。
+ 

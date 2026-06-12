@@ -1,0 +1,1 @@
+DB_CONTRACT_SPEC.mdをもとに、SQLを作成して。SQLは、フォルダDBを作って、その中に、1_db.sqlというファイルで作成して。
