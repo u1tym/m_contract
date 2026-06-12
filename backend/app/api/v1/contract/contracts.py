@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Query, Response, status
 
 from app.deps import CurrentAid, DbSession
@@ -19,6 +21,9 @@ def list_contracts(
     category_id: int | None = None,
     q: str | None = None,
     sort: str = Query("updated_at_desc"),
+    group: str | None = Query(None, pattern="^(active|ended|all)$"),
+    as_of_date: date | None = None,
+    include_deleted: bool = False,
 ) -> PaginatedResponse[ContractSummaryResponse]:
     items, total = service.list_contracts(
         db,
@@ -29,6 +34,9 @@ def list_contracts(
         category_id=category_id,
         q=q,
         sort=sort,
+        group=group,
+        as_of_date=as_of_date,
+        include_deleted=include_deleted,
     )
     return PaginatedResponse(
         items=items,
@@ -45,8 +53,13 @@ def create_contract(aid: CurrentAid, db: DbSession, data: ContractCreate) -> Con
 
 
 @router.get("/{contract_id}", response_model=ContractDetailResponse)
-def get_contract(aid: CurrentAid, db: DbSession, contract_id: int) -> ContractDetailResponse:
-    return service.get_contract_detail(db, aid, contract_id)
+def get_contract(
+    aid: CurrentAid,
+    db: DbSession,
+    contract_id: int,
+    include_deleted: bool = False,
+) -> ContractDetailResponse:
+    return service.get_contract_detail(db, aid, contract_id, include_deleted=include_deleted)
 
 
 @router.put("/{contract_id}", response_model=ContractDetailResponse)
@@ -63,3 +76,10 @@ def update_contract(
 def delete_contract(aid: CurrentAid, db: DbSession, contract_id: int) -> Response:
     service.delete_contract(db, aid, contract_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{contract_id}/restore", response_model=ContractDetailResponse)
+def restore_contract(
+    aid: CurrentAid, db: DbSession, contract_id: int
+) -> ContractDetailResponse:
+    return service.restore_contract(db, aid, contract_id)

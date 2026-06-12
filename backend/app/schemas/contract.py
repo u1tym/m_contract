@@ -58,6 +58,7 @@ class ContractSummaryResponse(BaseModel):
     monthly_amount: str
     credential_count: int
     attachment_count: int
+    is_deleted: bool
     updated_at: str
 
 
@@ -78,5 +79,6 @@ class ContractDetailResponse(BaseModel):
     credentials: list[CredentialResponse]
     contacts: list[ContactResponse]
     attachments: list[AttachmentResponse]
+    is_deleted: bool
     created_at: str
     updated_at: str

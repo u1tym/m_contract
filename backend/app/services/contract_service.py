@@ -6,7 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from fastapi import UploadFile
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, not_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -53,6 +53,23 @@ def _format_amount(value: Decimal | None) -> str | None:
     if value is None:
         return None
     return f"{value:.2f}"
+
+
+def _ended_at(ref_date: date) -> object:
+    """終了扱い: status=cancelled または end_date < 基準日"""
+    return or_(
+        Contract.status == "cancelled",
+        and_(Contract.end_date.isnot(None), Contract.end_date < ref_date),
+    )
+
+
+def _active_on_date(ref_date: date) -> object:
+    """指定日時点で契約中"""
+    return and_(
+        or_(Contract.start_date.is_(None), Contract.start_date <= ref_date),
+        or_(Contract.end_date.is_(None), Contract.end_date >= ref_date),
+        Contract.status != "cancelled",
+    )
 
 
 def calc_monthly_amount(amount: Decimal | None, payment_cycle: str | None) -> Decimal:
@@ -195,6 +212,7 @@ class ContractService:
             credentials=credentials,
             contacts=contacts,
             attachments=attachments,
+            is_deleted=contract.is_deleted,
             created_at=format_datetime_jst(contract.created_at),
             updated_at=format_datetime_jst(contract.updated_at),
         )
@@ -277,8 +295,22 @@ class ContractService:
         category_id: int | None,
         q: str | None,
         sort: str,
+        group: str | None = None,
+        as_of_date: date | None = None,
+        include_deleted: bool = False,
     ) -> tuple[list[ContractSummaryResponse], int]:
-        query = select(Contract).where(Contract.aid == aid, Contract.is_deleted.is_(False))
+        query = select(Contract).where(Contract.aid == aid)
+        if not include_deleted:
+            query = query.where(Contract.is_deleted.is_(False))
+
+        ref_date = as_of_date or date.today()
+        if as_of_date is not None:
+            query = query.where(_active_on_date(as_of_date))
+        elif group == "active":
+            query = query.where(not_(_ended_at(ref_date)))
+        elif group == "ended":
+            query = query.where(_ended_at(ref_date))
+
         if status:
             query = query.where(Contract.status == status)
         if category_id is not None:
@@ -340,19 +372,26 @@ class ContractService:
                     monthly_amount=f"{monthly:.2f}",
                     credential_count=cred_count,
                     attachment_count=attach_count,
+                    is_deleted=row.is_deleted,
                     updated_at=format_datetime_jst(row.updated_at),
                 )
             )
         return summaries, total
 
-    def get_contract_detail(self, db: Session, aid: int, contract_id: int) -> ContractDetailResponse:
+    def get_contract_detail(
+        self,
+        db: Session,
+        aid: int,
+        contract_id: int,
+        *,
+        include_deleted: bool = False,
+    ) -> ContractDetailResponse:
+        conditions = [Contract.id == contract_id, Contract.aid == aid]
+        if not include_deleted:
+            conditions.append(Contract.is_deleted.is_(False))
         contract = db.scalar(
             select(Contract)
-            .where(
-                Contract.id == contract_id,
-                Contract.aid == aid,
-                Contract.is_deleted.is_(False),
-            )
+            .where(*conditions)
             .options(
                 selectinload(Contract.category),
                 selectinload(Contract.credentials),
@@ -486,6 +525,44 @@ class ContractService:
                 self._storage.delete_file(attachment.storage_path)
 
         db.commit()
+
+    def restore_contract(self, db: Session, aid: int, contract_id: int) -> ContractDetailResponse:
+        contract = db.scalar(
+            select(Contract)
+            .where(
+                Contract.id == contract_id,
+                Contract.aid == aid,
+                Contract.is_deleted.is_(True),
+            )
+            .options(
+                selectinload(Contract.category),
+                selectinload(Contract.credentials),
+                selectinload(Contract.contacts),
+                selectinload(Contract.attachments),
+            )
+        )
+        if contract is None:
+            raise AppError(404, "削除済み契約が見つかりません", "NOT_FOUND")
+
+        now = _utc_now()
+        contract.is_deleted = False
+        contract.updated_at = now
+
+        for credential in contract.credentials:
+            if credential.is_deleted:
+                credential.is_deleted = False
+                credential.updated_at = now
+        for contact in contract.contacts:
+            if contact.is_deleted:
+                contact.is_deleted = False
+                contact.updated_at = now
+        for attachment in contract.attachments:
+            if attachment.is_deleted:
+                attachment.is_deleted = False
+                attachment.updated_at = now
+
+        db.commit()
+        return self._contract_detail(contract)
 
     def list_credentials(self, db: Session, aid: int, contract_id: int) -> list[CredentialResponse]:
         self._get_contract(db, aid, contract_id)

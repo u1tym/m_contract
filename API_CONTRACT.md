@@ -284,6 +284,7 @@ Content-Disposition: attachment; filename="{file_name}"
   "credentials": [],
   "contacts": [],
   "attachments": [],
+  "is_deleted": false,
   "created_at": "2026-01-15T09:00:00+09:00",
   "updated_at": "2026-06-01T10:30:00+09:00"
 }
@@ -329,6 +330,7 @@ Content-Disposition: attachment; filename="{file_name}"
 | GET | `/contracts/{contract_id}` | 契約詳細 |
 | PUT | `/contracts/{contract_id}` | 契約更新 |
 | DELETE | `/contracts/{contract_id}` | 契約削除 |
+| POST | `/contracts/{contract_id}/restore` | 契約の復元（論理削除の取り消し） |
 | GET | `/contracts/{contract_id}/credentials` | 認証情報一覧 |
 | POST | `/contracts/{contract_id}/credentials` | 認証情報追加 |
 | PUT | `/contracts/{contract_id}/credentials/{credential_id}` | 認証情報更新 |
@@ -450,6 +452,9 @@ Content-Disposition: attachment; filename="{file_name}"
 | `category_id` | int | カテゴリ ID フィルタ |
 | `q` | string | キーワード検索（会社名・契約名・契約番号） |
 | `sort` | string | ソート。`updated_at_desc`（デフォルト）, `provider_name_asc`, `start_date_desc` |
+| `group` | string | 契約グループ。`active`（契約中）, `ended`（終了）, `all`（すべて）。省略時はグループフィルタなし |
+| `as_of_date` | date | 指定日時点で契約中のものに絞り込み（`YYYY-MM-DD`）。指定時は `group` より優先 |
+| `include_deleted` | bool | `true` のとき論理削除済みも含める（既定 `false`） |
 
 **レスポンス `200`**
 
@@ -469,6 +474,7 @@ Content-Disposition: attachment; filename="{file_name}"
       "monthly_amount": "5980.00",
       "credential_count": 2,
       "attachment_count": 1,
+      "is_deleted": false,
       "updated_at": "2026-06-01T10:30:00+09:00"
     }
   ],
@@ -478,6 +484,25 @@ Content-Disposition: attachment; filename="{file_name}"
   "total_pages": 1
 }
 ```
+
+**フィルタの組み合わせ**
+
+| パラメータ | 挙動 |
+|-----------|------|
+| `group=active` | 終了していない契約。終了の定義は下記 |
+| `group=ended` | 終了した契約。終了の定義は下記 |
+| `group=all` | グループによる絞り込みなし |
+| `as_of_date` | 指定日時点で契約期間内かつ `status != cancelled` |
+| `include_deleted=true` | `is_deleted = true` の契約も一覧に含める |
+
+**終了の定義**（`group=ended` の判定、基準日は `as_of_date` または当日）
+
+- `status = cancelled` **または**
+- `end_date` が基準日より前
+
+**契約中の定義**（`group=active`）
+
+- 上記「終了」に該当しない（かつ `include_deleted` 未指定時は未削除）
 
 ---
 
@@ -566,9 +591,16 @@ Content-Disposition: attachment; filename="{file_name}"
 
 契約詳細を取得する。支払い・認証情報・連絡先・契約書ファイルをすべて含む。
 
+**クエリパラメータ**
+
+| パラメータ | 型 | 説明 |
+|-----------|-----|------|
+| `include_deleted` | bool | `true` のとき論理削除済み契約も取得（既定 `false`） |
+
 **レスポンス `200`**: `ContractDetail`
 
 - `credentials` の `password` 型はマスクして返す。
+- `is_deleted` で論理削除状態を示す。
 
 ---
 
@@ -607,9 +639,27 @@ Content-Disposition: attachment; filename="{file_name}"
 
 #### `DELETE /contracts/{contract_id}`
 
-契約を削除する。紐づく認証情報・連絡先・契約書ファイルも連鎖削除される。ストレージ上の実ファイルも削除する。
+契約を論理削除する。紐づく認証情報・連絡先・契約書ファイルも連鎖論理削除される。ストレージ上の実ファイルも削除する。
 
 **レスポンス `204`**
+
+> 契約終了（`status=cancelled` や `end_date` の設定）とは別操作。終了は `PUT` で行う。
+
+---
+
+#### `POST /contracts/{contract_id}/restore`
+
+論理削除した契約を復元する。紐づく認証情報・連絡先・契約書ファイルのメタデータも連鎖復元する。
+
+**レスポンス `200`**: `ContractDetail`
+
+**エラー**
+
+| コード | code | 説明 |
+|--------|------|------|
+| `404` | `NOT_FOUND` | 削除済み契約が見つからない |
+
+> 削除時にストレージから物理削除された契約書ファイルは復元されない。復元後のダウンロードは `404` となる場合がある。
 
 ---
 
