@@ -19,6 +19,7 @@ const asOfDate = ref('')
 const categoryId = ref<number | ''>('')
 const keyword = ref('')
 const includeDeleted = ref(false)
+const showFilters = ref(false)
 
 const statusLabel: Record<string, string> = {
   active: '契約中',
@@ -86,11 +87,32 @@ watch(includeDeleted, () => {
   page.value = 1
   void loadContracts()
 })
+
+const hasActiveFilters = (): boolean =>
+  group.value !== '' ||
+  asOfDate.value !== '' ||
+  categoryId.value !== '' ||
+  keyword.value !== '' ||
+  includeDeleted.value
 </script>
 
 <template>
   <div>
-    <div class="filters card">
+    <div class="list-toolbar">
+      <p v-if="loading" class="meta list-toolbar-count">読み込み中...</p>
+      <p v-else class="meta list-toolbar-count">{{ total }} 件</p>
+      <button
+        type="button"
+        class="btn btn-secondary btn-sm filter-toggle"
+        :class="{ active: showFilters || hasActiveFilters() }"
+        @click="showFilters = !showFilters"
+      >
+        {{ showFilters ? '検索条件を隠す' : '検索条件' }}
+        <span v-if="!showFilters && hasActiveFilters()" class="filter-dot" aria-hidden="true" />
+      </button>
+    </div>
+
+    <div v-show="showFilters" class="filters card">
       <div class="tab-row">
         <button type="button" class="tab" :class="{ active: group === '' && !asOfDate }" @click="setGroup('')">
           すべて
@@ -133,36 +155,37 @@ watch(includeDeleted, () => {
         削除済みを含める
       </label>
 
-      <button type="button" class="btn btn-block" @click="applyFilters">検索</button>
+      <div class="filter-actions">
+        <button type="button" class="btn btn-block" @click="applyFilters">検索</button>
+        <button type="button" class="btn btn-secondary btn-block" @click="showFilters = false">閉じる</button>
+      </div>
     </div>
 
     <p v-if="error" class="error-box">{{ error }}</p>
-    <p v-if="loading" class="meta">読み込み中...</p>
-    <p v-else class="meta">{{ total }} 件</p>
 
     <div v-if="!loading && items.length === 0" class="empty">契約がありません</div>
 
     <article
       v-for="item in items"
       :key="item.id"
-      class="card"
+      class="card contract-row"
       :class="{ deleted: item.is_deleted }"
       @click="router.push(`/contracts/${item.id}`)"
-      style="cursor: pointer"
     >
-      <div class="list-item">
-        <div>
+      <div class="contract-row-main">
+        <div class="contract-row-text">
           <h3>{{ item.provider_name }}</h3>
-          <p v-if="item.contract_name" class="meta">{{ item.contract_name }}</p>
-          <p class="meta">{{ item.category.name }}</p>
+          <p class="contract-row-sub meta">
+            <span v-if="item.contract_name">{{ item.contract_name }}</span>
+            <span v-if="item.contract_name && item.category.name"> · </span>
+            <span>{{ item.category.name }}</span>
+          </p>
         </div>
-        <div style="text-align: right">
+        <div class="contract-row-side">
           <span v-if="item.is_deleted" class="badge badge-deleted">削除済</span>
           <span v-else-if="item.status === 'cancelled' || (item.end_date && item.end_date < new Date().toISOString().slice(0, 10))" class="badge badge-ended">終了</span>
           <span v-else class="badge badge-active">{{ statusLabel[item.status] || item.status }}</span>
-          <p v-if="item.amount" class="meta" style="margin-top: 6px">
-            ¥{{ item.monthly_amount }}/月
-          </p>
+          <span v-if="item.amount" class="contract-row-amount meta">¥{{ item.monthly_amount }}/月</span>
         </div>
       </div>
     </article>
@@ -182,6 +205,8 @@ watch(includeDeleted, () => {
       </button>
     </div>
 
-    <button type="button" class="fab" title="新規契約" @click="router.push('/contracts/new')">+</button>
+    <button type="button" class="fab" title="新規契約" aria-label="新規契約" @click="router.push('/contracts/new')">
+      <span class="fab-icon">+</span>
+    </button>
   </div>
 </template>
