@@ -56,6 +56,13 @@ textarea {
   gap: 12px;
 }
 
+.app-header-start {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .app-header h1 {
   margin: 0;
   font-size: 1.1rem;

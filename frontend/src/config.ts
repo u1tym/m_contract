@@ -18,3 +18,6 @@ export const getLoginApiBase = (): string => {
   }
   return trimSlash(import.meta.env.VITE_LOGIN_ORIGIN || '')
 }
+
+/** ログインアプリのメニュー画面 */
+export const getLoginMenuUrl = (): string => '/mobile/login/#/menu'
